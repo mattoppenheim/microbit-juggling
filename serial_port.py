@@ -36,9 +36,16 @@ class SerialPort():
             serial_port.open()
             serial_port.flush()
             print('opened serial port: {}'.format(serial))
-        except AttributeError as e:
+        # except (AttributeError, SerialException) as e:
+        except Exception as e:
             print('cannot open serial port: {}'.format(e))
             return None
         # 100ms delay
         sleep(0.1)
         return serial_port
+
+
+if __name__ == '__main__':
+    print('instatiating SerialPort()')
+    serial_port = SerialPort()
+    print('finished')

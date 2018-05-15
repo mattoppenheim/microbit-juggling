@@ -48,14 +48,17 @@ def dispatcher_receive(message):
     microbit_df, scans = message
     get_mag_acc(microbit_df, scans)
 
+
 def dispatcher_send(message_txt, signal, sender):
     ''' Use dispatcher to send message_txt. '''
     dispatcher.send(signal=signal, message=message_txt, sender=sender)
+
 
 def get_mag_acc(df, scans):
     ''' Return the last <scans> of mag_acc from df. '''
     mag_acc = df.loc[df.index[-scans:],'mag_acc'].values.tolist()
     dispatcher_send(mag_acc, signal='mag_acc_list', sender='read_dataframe')
+
 
 if __name__ == '__main__':
     scans = 5

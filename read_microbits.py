@@ -20,6 +20,7 @@ optparse used for argument parsing as this works with the notebook as well as sc
 
 from datetime import datetime
 import math
+from microbit_juggling.serial_port import SerialPort
 import numpy as np
 from optparse import OptionParser
 import pandas as pd
