@@ -19,28 +19,32 @@ optparse used for argument parsing as this works with the notebook as well as sc
 
 
 from datetime import datetime
+from pydispatch import dispatcher
+import logging
 import math
 from serial_port import SerialPort
 import numpy as np
 from optparse import OptionParser
+import sys
+from serial_port import SerialPort
+from time import sleep
 import pandas as pd
 import pathlib
-import sys
-from time import sleep
 
 
 BAUD = 115200
 DF_COL_NAMES = ['time', 'id', 'count', 'x_acc', 'y_acc', 'z_acc', 'mag_acc']
-SCAN_DELAY = 0.4
+SCAN_DELAY = 0.1
 SCAN_COL_NAMES = ['id', 'count', 'x_acc', 'y_acc', 'z_acc']
 START_SCAN = 'ST'
 END_SCAN = 'EN'
 MAX_ROWS = 500
-NUM_MICROBITS = 2
 PID_MICROBIT = 516
 VID_MICROBIT = 3368
 TIMEOUT = 0.1
 OUT_FILEPATH = '/home/matthew/data/documents/infolab21/progs/jupyter_notebooks/microbit/out_data.txt'
+
+logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 
 
 def now_time():
@@ -56,8 +60,13 @@ def system_exit(message):
 
 
 class ReadMicrobits():
-    def __init__(self):
+    def __init__(self, num_microbits=3):
+        self.num_microbits = num_microbits
+        logging.info('logging {} microbits'.format(self.num_microbits))
+        dispatcher.connect(self.dispatcher_receive_data_request,
+            signal='request_data', sender='main')
         self.main()
+
 
     def calc_mag(self, df_scan):
         ''' calculate mag_acc from x, y, z acceleration in df_scan '''
@@ -87,7 +96,7 @@ class ReadMicrobits():
 
     def create_df_dict(self):
         ''' create a dictionary of dataframes to store the microbit data '''
-        mb_names = ['mb_{}'.format(id_x) for id_x in range(NUM_MICROBITS)]
+        mb_names = ['mb_{}'.format(id_x) for id_x in range(self.num_microbits)]
         df_dict = {name: pd.DataFrame(columns=DF_COL_NAMES) for name in mb_names}
         for mb_id in df_dict.keys():
             df_dict[mb_id] = df_dict[mb_id].set_index('time')
@@ -106,10 +115,32 @@ class ReadMicrobits():
 
     def create_multi_scans_dict(self):
         ''' create multi_scans lists for keeping scan fragments for each microbit '''
-        mb_names = ['mb_{}'.format(id_x) for id_x in range(NUM_MICROBITS)]
+        mb_names = ['mb_{}'.format(id_x) for id_x in range(self.num_microbits)]
         multi_scans_dict = {name:'' for name in mb_names}
         print('multi_scans_dict created: {}'.format(multi_scans_dict))
         return multi_scans_dict
+
+
+    def create_plot_data(self, num_samples):
+        ''' Assemble the data to be dispatched and plotted in main.py. '''
+        # Return a dict {mb_id: np array of scans}
+        plot_data = {}
+        for mb in self.df_dict.keys():
+            df = self.df_dict[mb]
+            len_df = len(df)
+            if len_df < num_samples:
+                num_samples = len_df
+            # Get the mag_acc column for the last num_samples.
+            plot_data[mb] = df.loc[df.index[-num_samples:],
+                'mag_acc'].values.tolist()
+        return plot_data
+
+
+    def dispatcher_receive_data_request(self, message):
+        ''' Dispatch microbit data. '''
+        data_to_send = self.create_plot_data(message)
+        dispatcher.send(message=data_to_send,
+            sender='read_microbits', signal='plot_data')
 
 
     def get_single_scan(self, scans, start_scan=START_SCAN, end_scan=END_SCAN):
@@ -223,8 +254,8 @@ class ReadMicrobits():
         if not serial_port:
             system_exit('microbit not found connected to a serial port')
         # df_dict is a dict of pandas DataFrames, one for each microbit
-        df_dict = self.create_df_dict()
-        microbits = [a for a in sorted(df_dict.keys())]
+        self.df_dict = self.create_df_dict()
+        microbits = [a for a in sorted(self.df_dict.keys())]
         print('microbit id\'s: {}'.format(microbits))
         old_time = datetime.now()
         while (1):
@@ -242,7 +273,6 @@ class ReadMicrobits():
                 # requested data, now wait for data, then read data
 
                 # This sleep command controls the frequency of data collection.
-                # sleep(0.015)
                 sleep(SCAN_DELAY/2)
                 print('polling: {}'.format(mb_id))
                 read_bytes = Microbit_Serial_Port.get_serial_data(serial_port)
@@ -267,11 +297,13 @@ class ReadMicrobits():
                 ident = 'mb_{}'.format(df_scan['id'].values[0])
                 # check_for_duplicate_counts(df_scan, df_dict[ident])
                 print('scan: {} mb_id: {} ident:{}'.format(scan, mb_id, ident))
-                df_dict[ident] = self.update_df_dict(df_scan, df_dict[ident])
+                self.df_dict[ident] = self.update_df_dict(df_scan,
+                    self.df_dict[ident])
                 #  print(df_dict[ident].to_csv())
 
 
 if __name__ == '__main__':
+    print('starting ReadMicrobits')
     sys.argv = ['--fake', 'True']
     print('now_time: {}'.format(now_time()))
-    read_microbits = ReadMicrobits()
+    read_microbits = ReadMicrobits(num_microbits=2)

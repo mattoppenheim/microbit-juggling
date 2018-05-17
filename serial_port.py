@@ -27,8 +27,8 @@ class SerialPort():
     def get_serial_port(self):
         ''' Return the serial port. '''
         return self.serial_port
-    
-    
+
+
     def open_serial_port(self, pid=PID_MICROBIT, vid=VID_MICROBIT, baud=BAUD, timeout=TIMEOUT):
         ''' open a serial connection '''
         print('looking for attached microbit on a serial port')

@@ -62,7 +62,8 @@ def get_mag_acc(df, scans):
 
 if __name__ == '__main__':
     scans = 5
-    test_df = pd.read_csv(TEST_DATA, header=None, index_col=0, names=DF_COL_NAMES)
+    test_df = pd.read_csv(TEST_DATA, header=None, index_col=0,
+        names=DF_COL_NAMES)
     print(test_df)
     print(test_df.loc[test_df.index[-scans:],'mag_acc'].values.tolist())
     print(get_mag_acc(test_df, scans))
