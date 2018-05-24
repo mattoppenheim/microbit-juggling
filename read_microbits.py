@@ -34,23 +34,18 @@ import pathlib
 
 BAUD = 115200
 DF_COL_NAMES = ['time', 'id', 'count', 'x_acc', 'y_acc', 'z_acc', 'mag_acc']
-SCAN_DELAY = 0.1
+# The time between data scans. Sample frequency = 1/(num_microbits * SCAN_DELAY)
+END_SCAN = 'EN'
+MAX_ROWS = 100
+OUT_FILEPATH = '/home/matthew/data/documents/infolab21/progs/jupyter_notebooks/microbit/out_data.txt'
+PID_MICROBIT = 516
+SCAN_DELAY = 0.5
 SCAN_COL_NAMES = ['id', 'count', 'x_acc', 'y_acc', 'z_acc']
 START_SCAN = 'ST'
-END_SCAN = 'EN'
-MAX_ROWS = 500
-PID_MICROBIT = 516
 VID_MICROBIT = 3368
-TIMEOUT = 0.1
-OUT_FILEPATH = '/home/matthew/data/documents/infolab21/progs/jupyter_notebooks/microbit/out_data.txt'
+
 
 logging.basicConfig(level=logging.DEBUG, format='%(message)s')
-
-
-def now_time():
-    '''returns the local time as a string'''
-    now = datetime.now()
-    return now.strftime("%H:%M:%S.%f")
 
 
 def system_exit(message):
@@ -61,6 +56,7 @@ def system_exit(message):
 
 class ReadMicrobits():
     def __init__(self, num_microbits=3):
+        logging.info(' **** {} started ****'.format(self.now_time()))
         self.num_microbits = num_microbits
         logging.info('logging {} microbits'.format(self.num_microbits))
         dispatcher.connect(self.dispatcher_receive_data_request,
@@ -107,6 +103,8 @@ class ReadMicrobits():
     def create_df_scan(self, scan, now_time):
         ''' create a df_scan '''
         df_scan = self.unpack_scan(scan)
+        if df_scan.empty:
+            return
         df_scan['mag_acc'] = self.calc_mag(df_scan)
         df_scan['time'] = self.timestring(now_time)
         df_scan = df_scan.set_index('time')
@@ -121,24 +119,26 @@ class ReadMicrobits():
         return multi_scans_dict
 
 
-    def create_plot_data(self, num_samples):
+    def create_dispatcher_data(self, num_samples=MAX_ROWS):
         ''' Assemble the data to be dispatched and plotted in main.py. '''
         # Return a dict {mb_id: np array of scans}
         plot_data = {}
         for mb in self.df_dict.keys():
+            idx = num_samples
             df = self.df_dict[mb]
             len_df = len(df)
             if len_df < num_samples:
-                num_samples = len_df
+                idx  = len_df
+
             # Get the mag_acc column for the last num_samples.
-            plot_data[mb] = df.loc[df.index[-num_samples:],
-                'mag_acc'].values.tolist()
+            plot_data[mb] = df['mag_acc'].tail(idx).values.tolist()
+            # logging.info('mb: {} df: {}'.format(mb, df))
         return plot_data
 
 
     def dispatcher_receive_data_request(self, message):
         ''' Dispatch microbit data. '''
-        data_to_send = self.create_plot_data(message)
+        data_to_send = self.create_dispatcher_data()
         dispatcher.send(message=data_to_send,
             sender='read_microbits', signal='plot_data')
 
@@ -156,6 +156,10 @@ class ReadMicrobits():
             # print('get_single_scan: {} input: {}'.format(e, scans))
             return ""
 
+    def now_time(self):
+        '''returns the local time as a string'''
+        now_time = datetime.now()
+        return now_time.strftime("%H:%M:%S.%f")
 
     def poll_microbit(self, mb_id, serial_port):
         ''' Poll a microbit connected to serial with its id. '''
@@ -212,7 +216,11 @@ class ReadMicrobits():
         a = (scan.split(','))
         # remove ST and EN markers
         a = a[1:-1]
-        a = [int(a[i]) for i in range(len(a))]
+        try:
+            a = [int(a[i]) for i in range(len(a))]
+        except ValueError as e:
+            logging.info('ValueError in unpack_scan')
+            return
         column_names = list(SCAN_COL_NAMES)
         try:
             df = pd.DataFrame([a],columns=column_names)
@@ -267,43 +275,42 @@ class ReadMicrobits():
             # print(text_all_scan(df_dict))
             for mb_id in microbits:
                 # poll each microbit in turn by transmitting their id
-                sleep(SCAN_DELAY/2)
                 self.poll_microbit(mb_id, serial_port)
                 # scan = ''
                 # requested data, now wait for data, then read data
 
                 # This sleep command controls the frequency of data collection.
-                sleep(SCAN_DELAY/2)
-                print('polling: {}'.format(mb_id))
+                sleep(SCAN_DELAY)
+                # logging.info('polling: {}'.format(mb_id))
                 read_bytes = Microbit_Serial_Port.get_serial_data(serial_port)
-                # If no receipt, the mb_id stays in the serial buffer. Tried serial.flush().
-                if read_bytes in microbits:
-                    print('*** id only, polling: {} read_bytes: {}, continuing'.format(mb_id, read_bytes))
-                    continue
+                # logging.info('poll: {} read_bytes: {}'.format(mb_id, read_bytes))
                 if not read_bytes:
-                    print('*** no read_bytes mb_id: {}'.format(mb_id))
+                    logging.info('*** {} no read_bytes mb_id: {}'.format(self.now_time(), mb_id))
                     continue
                 try:
                     scan = self.get_single_scan(read_bytes)
                 except (TypeError, ValueError, AttributeError) as e:
-                    print('get_single_scan error: {}'.format(e))
+                    logging.info('get_single_scan error: {}'.format(e))
                     scan = self.create_blank_scan(mb_id)
                 if len(scan.split(',')) != len(SCAN_COL_NAMES)+2:
-                    print('*** short scan: {} mb_id: {} read_bytes: {}'.format(
+                    logging.info('*** short scan: {} mb_id: {} read_bytes: {}'.format(
                         scan, mb_id, read_bytes))
                     continue
                 df_scan = self.create_df_scan(scan, now_time)
+                if df_scan.empty:
+                    logging.info('*** failed to create df_scan')
+                    continue
                 # get microbit id from scan
                 ident = 'mb_{}'.format(df_scan['id'].values[0])
                 # check_for_duplicate_counts(df_scan, df_dict[ident])
-                print('scan: {} mb_id: {} ident:{}'.format(scan, mb_id, ident))
+                logging.info('{} scan: {} polled: {} received: {}'.format(
+                     self.now_time(), scan, mb_id, ident))
                 self.df_dict[ident] = self.update_df_dict(df_scan,
                     self.df_dict[ident])
-                #  print(df_dict[ident].to_csv())
+                #  looging.info.(df_dict[ident].to_csv()))
 
 
 if __name__ == '__main__':
     print('starting ReadMicrobits')
     sys.argv = ['--fake', 'True']
-    print('now_time: {}'.format(now_time()))
-    read_microbits = ReadMicrobits(num_microbits=2)
+    read_microbits = ReadMicrobits(num_microbits=3)

@@ -8,22 +8,22 @@ To do: dynamically change the number of microbits and graphs
 Matthew Oppenheim May 2018. '''
 
 import logging
-from read_microbits import ReadMicrobits
 import numpy as np
 from pydispatch import dispatcher
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 from pyqtgraph.ptime import time
+from read_microbits import ReadMicrobits
 import sys
 import threading
 
 # how many samples to average to obtain the sample frequency
-FREQ_AVG = 100
+FREQ_AVG = 5
 NUM_MICROBITS = 3
 # how many samples to display
-NUM_SAMPLES = 10
+NUM_SAMPLES = 5
 # frequency to refresh the display
-SCREEN_REFRESH_RATE = 15
+SCREEN_REFRESH_RATE = 30
 
 logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 
@@ -31,6 +31,7 @@ def system_exit(message):
     ''' quit script '''
     print('system exit: {}'.format(message))
     sys.exit(0)
+
 
 class MicrobitJuggle():
     def __init__(self, num_microbits=3):
@@ -40,10 +41,6 @@ class MicrobitJuggle():
         mb_thread = threading.Thread(target=ReadMicrobits)
         mb_thread.start()
         self.app = QtGui.QApplication([])
-        # mb1 = self.initialise_data()
-        # mb2 = self.initialise_data()
-        # mb3 = self.initialise_data()
-
         win = pg.GraphicsWindow()
         win.setWindowTitle('Microbit accelerometer data')
         p0 = win.addPlot()
@@ -70,6 +67,7 @@ class MicrobitJuggle():
     def dispatcher_receive_data(self, message):
         ''' Handle <message> sent through dispatch. '''
         self.mb_dict = message
+        # logging.info('received: {}'.format(self.mb_dict))
 
 
     def graph_update_rate(self):
@@ -99,19 +97,6 @@ class MicrobitJuggle():
         return np.zeros(NUM_SAMPLES,dtype=int)
 
 
-    def pad_data(self, mb_dict):
-        ''' Pad out data so it can be plotted. '''
-        for mb in mb_dict.keys():
-            mb_data = mb_dict[mb] 
-            
-            length_data = len(mb_data)
-            if length_data < NUM_SAMPLES:
-                pads = np.zeros(NUM_SAMPLES-length_data,dtype=int)
-                mb_data = np.append(pads, mb_data)
-                logging.info('mb_data:{}'.format(mb_data))
-        return mb_dict
-
-
     def roll_data(self, data):
         ''' Rolls <data> by one sample. '''
         # using slices is 2.5 times faster than using np.roll
@@ -122,10 +107,7 @@ class MicrobitJuggle():
     def update(self):
         ''' Update the plot curves with new data. SYNTHETIC DATA '''
         dispatcher.send(message=NUM_SAMPLES, sender='main', signal='request_data')
-        # self.mb_dict = self.pad_data(self.mb_dict)
-        #for key in self.mb_dict.keys():
-        #   self.mb_dict[key][-1] = int(abs(np.random.normal(scale=1000)))
-        self.text.setText('self.frequency: {:0.1f}'.format(
+        self.text.setText('screen refresh rate: {:0.1f}'.format(
             self.graph_update_rate(), color=(255,255,0)))
         self.curve0.setData(self.mb_dict['mb_0'])
         self.curve1.setData(self.mb_dict['mb_1'])

@@ -1,6 +1,7 @@
 ''' Creates a serial port for the microbit.
 Matthew Oppenheim May 2018. '''
 
+import logging
 import serial
 import serial.tools.list_ports as list_ports
 from time import sleep
@@ -10,9 +11,17 @@ PID_MICROBIT = 516
 VID_MICROBIT = 3368
 TIMEOUT = 0.1
 
+logging.basicConfig(level=logging.DEBUG, format='%(message)s')
+
+
 class SerialPort():
     def __init__(self, pid=PID_MICROBIT, vid=VID_MICROBIT, baud=BAUD, timeout=TIMEOUT):
         self.serial_port = self.open_serial_port(pid, vid, baud, timeout)
+
+
+    def count_same_ports(self, ports, pid, vid):
+        ''' Count how many ports with pid and vid are in <ports>. '''
+        return len([p for p in ports if p.pid==pid and p.vid==vid])
 
 
     def get_serial_data(self, serial_port):
@@ -37,6 +46,11 @@ class SerialPort():
         serial_port.baudrate = baud
         ports = list(list_ports.comports())
         print('scanning ports')
+        num_mb = self.count_same_ports(ports, pid, vid)
+        logging.info('{} microbits found'.format(num_mb))
+        if num_mb>1:
+            logging.info('**** check for false connections ****')
+        ports.sort(reverse=True)
         for p in ports:
             print('pid: {} vid: {}'.format(p.pid, p.vid))
             if (p.pid == pid) and (p.vid == vid):

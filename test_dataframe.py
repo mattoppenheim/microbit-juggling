@@ -27,9 +27,12 @@ test_data = StringIO("""2018-05-14 16:26:22.465195,1,30,-240,336,240,477
 2018-05-14 16:26:37.346161,1,46,-2032,352,-656,2164""")
 
 if __name__ == '__main__':
-    scans = 5
+    scans = 6
     test_df = pd.read_csv(test_data, header=None, index_col=0, names=DF_COL_NAMES)
     print(test_df)
-    print(test_df.loc[test_df.index[-scans:],'mag_acc'].values.tolist())
+    print('scans: {}'.format(scans))
+    # print(test_df.loc[test_df.index[-scans:],'mag_acc'].values.tolist())
+    print(test_df['mag_acc'].tail(scans).values.tolist())
+
 
 
